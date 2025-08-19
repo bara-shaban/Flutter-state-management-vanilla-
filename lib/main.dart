@@ -1,7 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MaterialApp(
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const HomePage(),
+        '/new-contact': (context) => const NewContactView(),
+      },
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -18,34 +27,35 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class ContactBook{
-  ContactBook._SharedInstance();
+class ContactBook extends ValueNotifier<List<Contact>> {
+  ContactBook._sharedInstance() : super([]);
+  static final ContactBook _shared = ContactBook._sharedInstance();
 
-  static final ContactBook _shared = ContactBook._SharedInstance();
+  factory ContactBook() => _shared;
 
-  factory ContactBook()=> _shared;
-  
-  final List<Contact> _contacts = [];
-
-  int get length => _contacts.length;
+  int get length => value.length;
 
   void addContact(Contact contact) {
-    _contacts.add(contact);
+    final contacts = [...value];
+    contacts.add(contact);
+    value = contacts;
   }
 
   void removeContact(Contact contact) {
-    _contacts.remove(contact);
+    final contacts = [...value];
+    if (!contacts.contains(contact)) return;
+    contacts.remove(contact);
+    value = contacts;
   }
 
-  Contact? contact({required int atIndex}) => _contacts.length > atIndex ? _contacts[atIndex] : null;
-
+  Contact? contact({required int atIndex}) =>
+      value.length > atIndex ? value[atIndex] : null;
 }
-
 
 class Contact {
   final String name;
-
-  const Contact({required this.name,});
+  final String id;
+  Contact({required this.name}) : id = const Uuid().v4();
 }
 
 class HomePage extends StatelessWidget {
@@ -53,17 +63,73 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final contactBook = ContactBook();
     return Scaffold(
-      body:ListView.builder(
-        itemCount: contactBook.length,itemBuilder: (context, index) {
-          final contact =contactBook.contact(atIndex: index)!;
-          return const ListTile(
-            title: ListTile(
-              title: Text('Contact Name'),
-            ),
+      body: ValueListenableBuilder(
+        valueListenable: ContactBook(),
+        builder: (context, value, child) {
+          return ListView.builder(
+            itemCount: value.length,
+            itemBuilder: (context, index) {
+              final contact = value[index];
+              return ListTile(title: Text(contact.name));
+            },
           );
-        },)
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          ContactBook._shared.addContact(
+            Contact(name: 'Contact ${ContactBook._shared.length + 1}'),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class NewContactView extends StatefulWidget {
+  const NewContactView({super.key});
+
+  @override
+  State<NewContactView> createState() => _NewContactViewState();
+}
+
+class _NewContactViewState extends State<NewContactView> {
+  late final TextEditingController _textController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Add new Contact')),
+      body: Column(
+        children: [
+          TextField(
+            controller: _textController,
+            decoration: const InputDecoration(hintText: 'Enter contact name'),
+          ),
+          TextButton(
+            onPressed: () {
+              final contactName = Contact(name: _textController.text);
+              ContactBook().addContact(contactName);
+              Navigator.pop(context);
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
     );
   }
 }
