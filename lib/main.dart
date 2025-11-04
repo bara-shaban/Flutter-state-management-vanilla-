@@ -1,132 +1,114 @@
+// ignore_for_file: unreachable_from_main, public_member_api_docs
 import 'package:flutter/material.dart';
-import 'package:uuid/uuid.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hooks_riverpod/legacy.dart';
 
 void main() {
   runApp(
-    MaterialApp(
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const HomePage(),
-        '/new-contact': (context) => const NewContactView(),
-      },
+    ProviderScope(
+      child: const App(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+extension OptionalInfixAddition<T extends num> on T? {
+  T? operator +(T? other) {
+    final shadow = this;
+    if (shadow != null) {
+      return shadow + (other ?? 0) as T;
+    } else {
+      return null;
+    }
+  }
+}
+
+enum City {
+  stockholm,
+  paris,
+  tokyo,
+  newyork,
+}
+
+typedef WeatherEmoji = String;
+
+Future<WeatherEmoji> getWeather(City city) async {
+  return Future.delayed(
+    const Duration(seconds: 1),
+    () => {
+      City.stockholm: '☁️',
+      City.paris: '🌧️',
+      City.tokyo: '🌞',
+    }[city]!,
+  );
+}
+
+const String unknownWeatherEmoji = '❓';
+
+/// UI writes to this and reads from this
+final currentCityProvider = StateProvider<City?>(
+  (ref) => null,
+);
+
+/// UI reads from this
+final weatherProvider = FutureProvider<WeatherEmoji>((ref) async {
+  final city = ref.watch(currentCityProvider);
+  if (city != null) {
+    return getWeather(city);
+  } else {
+    return unknownWeatherEmoji;
+  }
+});
+
+class App extends StatelessWidget {
+  const App({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
+      darkTheme: ThemeData.dark(),
+      themeMode: ThemeMode.dark,
       debugShowCheckedModeBanner: false,
       home: const HomePage(),
     );
   }
 }
 
-class ContactBook extends ValueNotifier<List<Contact>> {
-  ContactBook._sharedInstance() : super([]);
-  static final ContactBook _shared = ContactBook._sharedInstance();
-
-  factory ContactBook() => _shared;
-
-  int get length => value.length;
-
-  void addContact(Contact contact) {
-    final contacts = [...value];
-    contacts.add(contact);
-    value = contacts;
-  }
-
-  void removeContact(Contact contact) {
-    final contacts = [...value];
-    if (!contacts.contains(contact)) return;
-    contacts.remove(contact);
-    value = contacts;
-  }
-
-  Contact? contact({required int atIndex}) =>
-      value.length > atIndex ? value[atIndex] : null;
-}
-
-class Contact {
-  final String name;
-  final String id;
-  Contact({required this.name}) : id = const Uuid().v4();
-}
-
-class HomePage extends StatelessWidget {
+class HomePage extends ConsumerWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: ValueListenableBuilder(
-        valueListenable: ContactBook(),
-        builder: (context, value, child) {
-          return ListView.builder(
-            itemCount: value.length,
-            itemBuilder: (context, index) {
-              final contact = value[index];
-              return ListTile(title: Text(contact.name));
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          ContactBook._shared.addContact(
-            Contact(name: 'Contact ${ContactBook._shared.length + 1}'),
-          );
-        },
-        child: const Icon(Icons.add),
-      ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentWeather = ref.watch(
+      weatherProvider,
     );
-  }
-}
-
-class NewContactView extends StatefulWidget {
-  const NewContactView({super.key});
-
-  @override
-  State<NewContactView> createState() => _NewContactViewState();
-}
-
-class _NewContactViewState extends State<NewContactView> {
-  late final TextEditingController _textController;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add new Contact')),
+      appBar: AppBar(title: const Text('Weather')),
       body: Column(
         children: [
-          TextField(
-            controller: _textController,
-            decoration: const InputDecoration(hintText: 'Enter contact name'),
+          currentWeather.when(
+            data: (data) => Text(data, style: const TextStyle(fontSize: 40)),
+            loading: () => const Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(),
+            ),
+            error: (error, stack) => const Text('Error loading weather'),
           ),
-          TextButton(
-            onPressed: () {
-              final contactName = Contact(name: _textController.text);
-              ContactBook().addContact(contactName);
-              Navigator.pop(context);
-            },
-            child: const Text('Add'),
+          Expanded(
+            child: ListView.builder(
+              itemCount: City.values.length,
+              itemBuilder: (context, index) {
+                final city = City.values[index];
+                final isSelected = city == ref.watch(currentCityProvider);
+                return ListTile(
+                  title: Text(
+                    city.toString(),
+                  ),
+                  trailing: isSelected ? const Icon(Icons.check) : null,
+                  onTap: () =>
+                      ref.read(currentCityProvider.notifier).state = city,
+                );
+              },
+            ),
           ),
         ],
       ),
